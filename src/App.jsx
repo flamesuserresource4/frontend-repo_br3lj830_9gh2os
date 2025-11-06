@@ -1,31 +1,42 @@
 import { useEffect, useMemo, useState } from "react";
-import ChatHeader from "./components/ChatHeader";
+import UsersSidebar from "./components/UsersSidebar";
+import ConversationHeader from "./components/ConversationHeader";
 import MessageList from "./components/MessageList";
 import MessageInput from "./components/MessageInput";
-import UsernameModal from "./components/UsernameModal";
 
-// This frontend provides a polished single-room chat UI using localStorage for name.
-// Networking is intentionally omitted so you can host it anywhere now.
-// For real-time multi-user chat later, you can replace the persistence with your PHP/MySQL backend.
+// This UI supports a group room and personal DMs. Networking will be wired later to PHP/MySQL.
 
 function App() {
   const [username, setUsername] = useState("");
-  const [messages, setMessages] = useState([]);
+  const [activeKey, setActiveKey] = useState("group:general");
+  // conversations: { [key: string]: { messages: Message[] } }
+  const [conversations, setConversations] = useState({
+    "group:general": { messages: [] },
+  });
 
-  // Demo seed so the UI doesn't look empty. Remove when wiring to backend.
+  // Demo user list; in production this will come from the backend
+  const [users] = useState([
+    { id: "u1", name: "Alex", status: "Available" },
+    { id: "u2", name: "Jordan", status: "Away" },
+    { id: "u3", name: "Taylor", status: "Online" },
+    { id: "u4", name: "Morgan", status: "Do not disturb" },
+  ]);
+
   useEffect(() => {
-    const stored = localStorage.getItem("chat_username");
-    if (stored) setUsername(stored);
+    const storedName = localStorage.getItem("chat_username");
+    if (storedName) setUsername(storedName);
   }, []);
 
-  const participantsCount = useMemo(() => {
-    // Since there's no backend in this template, show at least 1.
-    return Math.max(1, new Set(messages.map((m) => m.author)).size || (username ? 1 : 0));
-  }, [messages, username]);
+  const ensureConversation = (key) => {
+    setConversations((prev) => {
+      if (prev[key]) return prev;
+      return { ...prev, [key]: { messages: [] } };
+    });
+  };
 
-  const handleJoin = (name) => {
-    setUsername(name);
-    localStorage.setItem("chat_username", name);
+  const handleSelectConversation = (key) => {
+    ensureConversation(key);
+    setActiveKey(key);
   };
 
   const handleSend = (text) => {
@@ -38,18 +49,73 @@ function App() {
       text,
       time: `${hh}:${mm}`,
     };
-    setMessages((prev) => [...prev, msg]);
+    setConversations((prev) => {
+      const conv = prev[activeKey] || { messages: [] };
+      return { ...prev, [activeKey]: { messages: [...conv.messages, msg] } };
+    });
+  };
+
+  const title = useMemo(() => {
+    if (activeKey.startsWith("group:")) return "#general";
+    const name = activeKey.replace("dm:", "");
+    return name;
+  }, [activeKey]);
+
+  const subtitle = useMemo(() => {
+    if (activeKey.startsWith("group:")) return "Group chat";
+    return "Direct message";
+  }, [activeKey]);
+
+  const messages = conversations[activeKey]?.messages || [];
+
+  // Simple inline name setter to keep component count to 4
+  const needsName = !username;
+  const [tempName, setTempName] = useState("");
+
+  const saveName = () => {
+    const val = (tempName || "").trim();
+    if (!val) return;
+    setUsername(val);
+    localStorage.setItem("chat_username", val);
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-violet-50">
-      <div className="mx-auto flex h-screen max-w-4xl flex-col rounded-none sm:rounded-xl sm:border sm:border-gray-200 sm:shadow-lg overflow-hidden">
-        <ChatHeader roomName="#general" participantsCount={participantsCount} />
-        <MessageList messages={messages} currentUser={username} />
-        <MessageInput onSend={handleSend} disabled={!username} />
-      </div>
+      <div className="mx-auto flex h-screen max-w-6xl overflow-hidden rounded-none sm:rounded-xl sm:border sm:border-gray-200 sm:shadow-lg">
+        <UsersSidebar
+          users={users}
+          activeKey={activeKey}
+          onSelect={handleSelectConversation}
+          currentUser={username}
+        />
 
-      <UsernameModal isOpen={!username} onSubmit={handleJoin} />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <ConversationHeader title={title} subtitle={subtitle} />
+
+          {needsName && (
+            <div className="border-b border-gray-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">Set your display name:</span>
+                <input
+                  value={tempName}
+                  onChange={(e) => setTempName(e.target.value)}
+                  placeholder="e.g. Casey"
+                  className="h-8 rounded-md border border-amber-300 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                />
+                <button
+                  onClick={saveName}
+                  className="h-8 rounded-md bg-amber-600 px-3 text-xs font-semibold text-white hover:bg-amber-700"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          )}
+
+          <MessageList messages={messages} currentUser={username} />
+          <MessageInput onSend={handleSend} disabled={!username} />
+        </div>
+      </div>
     </div>
   );
 }
