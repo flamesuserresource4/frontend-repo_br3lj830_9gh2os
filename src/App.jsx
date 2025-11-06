@@ -4,7 +4,7 @@ import ConversationHeader from "./components/ConversationHeader";
 import MessageList from "./components/MessageList";
 import MessageInput from "./components/MessageInput";
 
-// This UI supports a group room and personal DMs. Networking will be wired later to PHP/MySQL.
+// Extended UI: long-press or 3-dot menu on messages for delete/copy/forward. Header 3-dot shows Profile option.
 
 function App() {
   const [username, setUsername] = useState("");
@@ -55,6 +55,35 @@ function App() {
     });
   };
 
+  const handleMessageAction = (action, messageId) => {
+    if (action === "delete") {
+      setConversations((prev) => {
+        const conv = prev[activeKey] || { messages: [] };
+        return {
+          ...prev,
+          [activeKey]: { messages: conv.messages.filter((m) => m.id !== messageId) },
+        };
+      });
+    } else if (action === "copy") {
+      const conv = conversations[activeKey] || { messages: [] };
+      const msg = conv.messages.find((m) => m.id === messageId);
+      if (msg) navigator.clipboard?.writeText(msg.text).catch(() => {});
+    } else if (action === "forward") {
+      // For demo, forward to #general
+      const conv = conversations[activeKey] || { messages: [] };
+      const msg = conv.messages.find((m) => m.id === messageId);
+      if (msg) {
+        const forwarded = { ...msg, id: `${Date.now()}-fwd`, text: `↪ ${msg.text}` };
+        ensureConversation("group:general");
+        setConversations((prev) => {
+          const gen = prev["group:general"] || { messages: [] };
+          return { ...prev, ["group:general"]: { messages: [...gen.messages, forwarded] } };
+        });
+        setActiveKey("group:general");
+      }
+    }
+  };
+
   const title = useMemo(() => {
     if (activeKey.startsWith("group:")) return "#general";
     const name = activeKey.replace("dm:", "");
@@ -68,7 +97,7 @@ function App() {
 
   const messages = conversations[activeKey]?.messages || [];
 
-  // Simple inline name setter to keep component count to 4
+  // Inline name setter
   const needsName = !username;
   const [tempName, setTempName] = useState("");
 
@@ -79,6 +108,10 @@ function App() {
     localStorage.setItem("chat_username", val);
   };
 
+  const handleOpenProfile = () => {
+    alert("Profile: " + (activeKey.startsWith("dm:") ? title : username || "Guest"));
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-violet-50">
       <div className="mx-auto flex h-screen max-w-6xl overflow-hidden rounded-none sm:rounded-xl sm:border sm:border-gray-200 sm:shadow-lg">
@@ -87,10 +120,15 @@ function App() {
           activeKey={activeKey}
           onSelect={handleSelectConversation}
           currentUser={username}
+          onNewDM={() => {}}
+          onLogout={() => {
+            setUsername("");
+            localStorage.removeItem("chat_username");
+          }}
         />
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <ConversationHeader title={title} subtitle={subtitle} />
+          <ConversationHeader title={title} subtitle={subtitle} onOpenProfile={handleOpenProfile} />
 
           {needsName && (
             <div className="border-b border-gray-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
@@ -112,7 +150,7 @@ function App() {
             </div>
           )}
 
-          <MessageList messages={messages} currentUser={username} />
+          <MessageList messages={messages} currentUser={username} onAction={handleMessageAction} />
           <MessageInput onSend={handleSend} disabled={!username} />
         </div>
       </div>
